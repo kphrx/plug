@@ -47,6 +47,12 @@ defmodule Plug.RewriteOn do
     |> call(rewrite_on)
   end
 
+  def call(conn, [:forwarded | rewrite_on]) do
+    conn
+    |> put_all(get_req_header(conn, "forwarded"))
+    |> call(rewrite_on)
+  end
+
   def call(_conn, [other | _rewrite_on]) do
     raise "unknown rewrite: #{inspect(other)}"
   end
@@ -83,5 +89,38 @@ defmodule Plug.RewriteOn do
     else
       _ -> conn
     end
+  end
+
+  defp put_all(conn, headers) do
+    with [header] <- headers,
+         forwarded <- parse_forwarded(header) do
+      conn
+      |> put_scheme([Keyword.get(forwarded, :proto)])
+      |> put_host([Keyword.get(forwarded, :host)])
+    else
+      _ -> conn
+    end
+  end
+
+  defp parse_forwarded(header) do
+    header
+    |> String.split(",", trim: true)
+    |> Enum.at(0)
+    |> String.split(";", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.map(fn
+      "by=" <> value ->
+        {:by, value}
+      "for=" <> value ->
+        {:for, value}
+      "host=" <> value ->
+        {:host, value}
+      "proto=" <> value ->
+        {:proto, value}
+      unknown ->
+        unknown
+        |> String.split("=")
+        |> List.to_tuple
+    end)
   end
 end
